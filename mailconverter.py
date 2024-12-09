@@ -19,7 +19,7 @@ class MailConverter:
      @staticmethod
      def make_chunks(mail_out_dir, max_length=1000, max_excess = 2):
           text_chunks = []
-          for filepath in tqdm(glob.iglob(f"{mail_out_dir}/*.{Mail.EXT}", recursive=False)):
+          for filepath in tqdm(glob.iglob(f"{mail_out_dir}/*.{Mail.EXT}", recursive=False), desc="Making chunks"):
                current_chunk = ""
                with open(filepath, "r", encoding="utf-8") as mail_file:
                     file_cnt = mail_file.read()
@@ -91,7 +91,7 @@ class EmlConverter(MailConverter):
           nr_html_mails = 0
           nr_html_text_mails = 0
 
-          for filepath in glob.iglob(f"{mail_in_dir}/*.eml", recursive=False):
+          for filepath in tqdm(glob.iglob(f"{mail_in_dir}/*.eml", recursive=False),desc="Processing eml mails"):
                # print(f"file: {filepath}")
                # mail = RAGMail(os.path.basename(filepath))
                mail = Mail(os.path.basename(filepath))
@@ -188,7 +188,7 @@ class EmlxConverter(MailConverter):
           nr_html_text_mails = 0
           mismatch = 0
 
-          for filepath in glob.iglob(f"/Users/{username}/Library/Mail/**/{mailbox}/**/*.emlx", recursive=True):
+          for filepath in tqdm(glob.iglob(f"/Users/{username}/Library/Mail/**/{mailbox}/**/*.emlx", recursive=True),desc="Processing emlx mails"):
                # print(f"file: {filepath}")
                nr_mails = nr_mails + 1
                m = emlx.read(filepath, encoding='utf-8')

@@ -34,7 +34,7 @@ def main(mail_out_dir, mailbox, username, do_elmx):
     llm = conn_LLM()
 
     # Instantiate the RAG system
-    rag_system = RAG(retriever=milvus_retriever, generator=llm)
+    rag_system = RAG(retriever=milvus_retriever)
 
     print(rag_system("Chi e' Stefano?"))
 

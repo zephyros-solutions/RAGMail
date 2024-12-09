@@ -18,15 +18,14 @@ EMB_DIM = 1024
 GEN_MODEL = 'llama3.2:latest'
 
 class RAG(dspy.Module):
-    def __init__(self, retriever, generator, k=5):
-        super().__init__()
-        self.retrieve = dspy.Retrieve(k=k, retriever_model=retriever)
-        self.generate_answer = dspy.Predict(generator)
+    def __init__(self, retriever):
+        self.respond = dspy.ChainOfThought('context, question -> response')
+        self.retriever = retriever
 
     def forward(self, question):
-        context = self.retrieve(question).passages
-        pred = self.generate_answer(context=context, question=question).answer
-        return dspy.Prediction(context=context, answer=pred, question=question)
+        breakpoint()
+        context = self.retriever(question)
+        return self.respond(context=context, question=question)
     
 
 def create_client(chunks):
@@ -45,22 +44,21 @@ def create_client(chunks):
             max_length=65535,
             enable_dynamic=True,
         )
-    # Define collection parameters
-    
-    for idx,chunk in enumerate(tqdm(chunks)):
-        if len(chunk) == 0:
-            continue
-        milvus_client.insert(
-            collection_name=COLL_NAME,
-            data=[
-                {
-                    "id": idx,
-                    "embedding": my_embedder([chunk])[0],
-                    "text": chunk,
-                }
-            ],
-        )
-        # breakpoint()
+        
+        for idx,chunk in enumerate(tqdm(chunks, desc="Loading embeddings in DB")):
+            if len(chunk) == 0:
+                continue
+            milvus_client.insert(
+                collection_name=COLL_NAME,
+                data=[
+                    {
+                        "id": idx,
+                        "embedding": my_embedder([chunk])[0],
+                        "text": chunk,
+                    }
+                ],
+            )
+            # breakpoint()
 
     # Initialize the MilvusRM retriever
     milvus_retriever = MilvusRM(
