@@ -8,14 +8,8 @@ from tqdm import tqdm
 from pymilvus import model, MilvusClient, IndexType, DataType
 from dspy.retrieve.milvus_rm import MilvusRM
 
-MILVUS_URI = './milvus.db'
-MILVUS_TOKEN = ""
-COLL_NAME = 'FeMail'
+from globals import MILVUS_URI, MILVUS_TOKEN, EMB_MODEL, API_BASE, API_KEY
 
-# MODEL = 'llama3:8b-instruct-q5_1'
-EMB_MODEL = 'mxbai-embed-large'
-EMB_DIM = 1024
-GEN_MODEL = 'llama3.2:latest'
 
 class RAG(dspy.Module):
     def __init__(self, retriever):
@@ -23,55 +17,33 @@ class RAG(dspy.Module):
         self.retriever = retriever
 
     def forward(self, question):
-        breakpoint()
+        # breakpoint()
         context = self.retriever(question)
         return self.respond(context=context, question=question)
     
 
-def create_client(chunks):
+
+def create_collection(collection_name:str, dimension:int, max_length:int) -> MilvusClient:
     # Initialize Milvus client
     milvus_client = MilvusClient(uri=MILVUS_URI, token=MILVUS_TOKEN)
     
-    if COLL_NAME not in milvus_client.list_collections():
+    if collection_name not in milvus_client.list_collections():
         milvus_client.create_collection(
-            collection_name=COLL_NAME,
+            collection_name=collection_name,
             overwrite=True,
-            dimension=EMB_DIM,
+            dimension=dimension,
             primary_field_name="id",
             vector_field_name="embedding",
             id_type="int",
             metric_type="IP",
-            max_length=65535,
+            max_length=max_length,
             enable_dynamic=True,
         )
-        
-        for idx,chunk in enumerate(tqdm(chunks, desc="Loading embeddings in DB")):
-            if len(chunk) == 0:
-                continue
-            milvus_client.insert(
-                collection_name=COLL_NAME,
-                data=[
-                    {
-                        "id": idx,
-                        "embedding": my_embedder([chunk])[0],
-                        "text": chunk,
-                    }
-                ],
-            )
-            # breakpoint()
+        return milvus_client
+    else:
+        return None
 
-    # Initialize the MilvusRM retriever
-    milvus_retriever = MilvusRM(
-        collection_name=COLL_NAME,
-        uri=MILVUS_URI,
-        token=MILVUS_TOKEN,
-        embedding_function=my_embedder,
-        k=5
-    )
-
-    return milvus_retriever
-
-def my_embedder(texts):
+def my_embedder(texts:list[str]) -> list[float]:
     embeddings = []
     if type(texts) is not list:
         raise Exception(f"texts is of type {type(texts)} instead of list")
@@ -82,29 +54,54 @@ def my_embedder(texts):
         embeddings.append(embedding)
     return embeddings
 
-def create_embedder(dimensions=EMB_DIM):
+def upload_embeddings(client, chunks:list[str], collection_name:str) -> None:
+    for idx,chunk in enumerate(tqdm(chunks, desc="Loading embeddings in DB")):
+        if len(chunk) == 0:
+            continue
+        client.insert(
+            collection_name=collection_name,
+            data=[
+                {
+                    "id": idx,
+                    "embedding": my_embedder([chunk])[0],
+                    "text": chunk,
+                }
+            ],
+        )
+        # breakpoint()
+
+def get_retriever(collection_name:str, k:int) -> MilvusRM:
+    # Initialize the MilvusRM retriever
+    milvus_retriever = MilvusRM(
+        collection_name=collection_name,
+        uri=MILVUS_URI,
+        token=MILVUS_TOKEN,
+        embedding_function=my_embedder,
+        k=k
+    )
+
+    return milvus_retriever
+
+
+def create_embedder(dimensions:int) -> dspy.Embedder:
     embedder = dspy.Embedder(my_embedder, dimensions=dimensions)
     return embedder
 
-def conn_LLM(model=GEN_MODEL, max_tokens = 4000):
+def conn_LLM(model, max_tokens):
 
-    # Connect to Llama3 hosted with Ollama
-    llm = dspy.OllamaLocal(
-        model=model,
-        max_tokens=max_tokens,
-        timeout_s=480
-    )
+    # # Connect to Llama3 hosted with Ollama
+    # lm = dspy.OllamaLocal(
+    #     model=model,
+    #     max_tokens=max_tokens,
+    #     timeout_s=480
+    # )
+    lm = dspy.LM(model, api_base=API_BASE, api_key=API_KEY)
+    dspy.configure(lm=lm)
+    
+    # # Test connection
+    # test_query = "What is the latest in AI?"
+    # test_response = lm(test_query)
+    # print(f"Test {model} response:", test_response)
 
-    # Test connection
-    test_query = "What is the latest in AI?"
-    test_response = llm(test_query)
-    print("Test Llama3 response:", test_response)
+    return lm
 
-    dspy.configure(lm=llm)
-    return llm
-
-
-
-# TODO
-# Create a DSPy embedder with ollama, here:
-# https://ollama.com/blog/embedding-models, https://milvus.io/docs/integrate_with_dspy.md

@@ -10,16 +10,17 @@ from email.parser import BytesParser
 from tqdm import tqdm
 
 from mail import Mail
-
+from globals import USERNAME
 
 class MailConverter:
 
      CHUNKS_FILE = "chunks.txt"
      
      @staticmethod
-     def make_chunks(mail_out_dir, max_length=1000, max_excess = 2):
+     def make_chunks(mail_out_dir, max_chunk_len, max_chunk_excess):
           text_chunks = []
-          for filepath in tqdm(glob.iglob(f"{mail_out_dir}/*.{Mail.EXT}", recursive=False), desc="Making chunks"):
+          filepaths = [file for file in glob.iglob(f"{mail_out_dir}/*.{Mail.EXT}", recursive=False)]
+          for filepath in tqdm(filepaths, desc="Making chunks"):
                current_chunk = ""
                with open(filepath, "r", encoding="utf-8") as mail_file:
                     file_cnt = mail_file.read()
@@ -28,12 +29,12 @@ class MailConverter:
                # sentences = re.split(r'(?<=[.!?]) +', file_cnt)
                sentences = re.split(r'(?<=[.!?;])(?: )*', file_cnt)
                
-               if len(sentences) == 1 and len(sentences[0]) > max_excess * max_length:
+               if len(sentences) == 1 and len(sentences[0]) > max_chunk_excess * max_chunk_len:
                     sentences = re.split(r'(?<=[.!?; ])(?: )*', file_cnt)
                     # breakpoint()
 
                for sentence in sentences:                    
-                    if len(current_chunk) + len(sentence) + 1 < max_length:
+                    if len(current_chunk) + len(sentence) + 1 < max_chunk_len:
                          current_chunk += sentence + " "
                     else:
                          text_chunks.append(current_chunk)
@@ -90,8 +91,10 @@ class EmlConverter(MailConverter):
           nr_text_mails = 0
           nr_html_mails = 0
           nr_html_text_mails = 0
+          
+          filepaths = [file for file in glob.iglob(f"{mail_in_dir}/*.eml", recursive=False)]
 
-          for filepath in tqdm(glob.iglob(f"{mail_in_dir}/*.eml", recursive=False),desc="Processing eml mails"):
+          for filepath in tqdm(filepaths,desc="Processing eml mails"):
                # print(f"file: {filepath}")
                # mail = RAGMail(os.path.basename(filepath))
                mail = Mail(os.path.basename(filepath))
@@ -181,14 +184,15 @@ class EmlxConverter(MailConverter):
      def __init__(self):
           super().__init__()
 
-     def read_mails(self, username, mailbox, mail_out_dir):
+     def read_mails(self, mailbox, mail_out_dir):
           nr_mails = 0
           nr_text_mails = 0
           nr_html_mails = 0
           nr_html_text_mails = 0
           mismatch = 0
 
-          for filepath in tqdm(glob.iglob(f"/Users/{username}/Library/Mail/**/{mailbox}/**/*.emlx", recursive=True),desc="Processing emlx mails"):
+          filepaths = [file for file in glob.iglob(f"/Users/{USERNAME}/Library/Mail/**/{mailbox}/**/*.emlx", recursive=True)]
+          for filepath in tqdm(filepaths,desc="Processing emlx mails"):
                # print(f"file: {filepath}")
                nr_mails = nr_mails + 1
                m = emlx.read(filepath, encoding='utf-8')
