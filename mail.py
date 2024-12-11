@@ -173,17 +173,25 @@ class Mail:
 
 
      def __str__(self):
-          return f'{self.Date}, {self.From} dice a {self.To} a proposito di {self.Subject}:\n{self.Content}'
+          return self.get_content(False)
      
-     def save(self, mail_out_dir):
-          if self.From != None:
+     def get_content(self, isReply):
+          if not isReply:
+               cnt = f'Il {self.Date} {self.From} dice a {self.To} a proposito di {self.Subject}:\n{self.Content}'
+          else:
+               cnt = f'Il {self.Date} {self.From} risponde a {self.To} a proposito di {self.Subject}:\n{self.Content}'
+          return cnt
+
+     def save(self, mail_out_dir, isReply):
+          # if self.From != None:
                # out_date = self.Date.strftime(BaseMailConv.OUT_TM_FMT)
                # filename = f'{mail_out_dir}/' + slugify(f'{self.From}_{self.To}_{self.Subject}_{out_date}')
-               filename = Path(mail_out_dir,self.orig_file)
-               file_cnt = str(self)
-               
-               with open(filename, 'w') as f:
-                    f.write(file_cnt)
+          filename = Path(mail_out_dir,self.orig_file)
+          
+          file_cnt = self.get_content(isReply)
+          
+          with open(filename, 'w') as f:
+               f.write(file_cnt)
           return
      
      def setDate(self, date_txt):
@@ -231,5 +239,6 @@ class Mail:
      def setConversationID(self, id):
           self.CoversationID = id
 
-     def addContent(self, content_text):
-          self.Content = self.Content + content_text
+     def addReply(self, reply):
+          cnt = reply.get_content(True)
+          self.Content = self.Content + '\n' + cnt

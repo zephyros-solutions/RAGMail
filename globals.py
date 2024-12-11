@@ -6,9 +6,15 @@ USERNAME = 'SB'
 MILVUS_URI = './milvus.db'
 MILVUS_TOKEN = ""
 
-EMB_MODEL = 'mxbai-embed-large' # https://ollama.com/library/mxbai-embed-large
-EMB_DIM = 1024
-LEN_CTX = 20
+# EMB_MODEL = 'mxbai-embed-large' # https://ollama.com/library/mxbai-embed-large
+EMB_MODEL = 'galatolo/cerbero-7b-openchat' # https://github.com/galatolofederico/cerbero-7b
+
+
+MILVUS_METRIC_TYPE = "IP"
+MILVUS_MAX_LENGTH = 65535
+MILVUS_DYN = True
+MILVUS_LEN_CTX = 20
+
 
 
 # GEN_MODEL = 'ollama_chat/llama3.2:latest'
@@ -19,10 +25,8 @@ GEN_MODEL = 'ollama_chat/llama3.3:latest'
 API_BASE = 'http://localhost:11434'
 API_KEY = ''
 
-MAX_LENGTH = 65535
-MAX_TOKENS = 4000
 
 
-
+# Chunking
 MAX_CHUNK_LEN = 1000
 MAX_CHUNK_EXCESS = 2

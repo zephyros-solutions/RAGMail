@@ -13,17 +13,24 @@
 from pathlib import Path
 import re
 
-from vector import RAG, create_embedder, create_collection, upload_embeddings, conn_LLM, get_retriever
-from mailconverter import EmlConverter, EmlxConverter
-from globals import ORIG_MAILS_DIR, EMB_DIM, MAX_LENGTH, LEN_CTX, MAX_CHUNK_LEN, MAX_CHUNK_EXCESS, GEN_MODEL, MAX_TOKENS
+from vector import RAG, create_embedder, create_collection, upload_embeddings, conn_LLM, get_retriever, get_emb_size
+from mailconverter import MailConverter, EmlConverter, EmlxConverter
+from globals import ORIG_MAILS_DIR
+from globals import EMB_MODEL, GEN_MODEL
+from globals import MILVUS_METRIC_TYPE, MILVUS_MAX_LENGTH, MILVUS_DYN, MILVUS_LEN_CTX
+from globals import MAX_CHUNK_LEN, MAX_CHUNK_EXCESS
 
-
-def main(mail_out_dir, mailbox, do_elmx):
+def main(mail_out_dir, mailbox, doThreads, do_elmx):
+    emb_size = get_emb_size()
+    
+    repo = f"{mailbox}_{'T' if doThreads else 'NT'}_{EMB_MODEL}_{emb_size}"
     
     # collection name can only contain numbers, letters and underscores
-    collection_name = re.sub(r'[^\w\d]', '', mailbox)
+    collection_name = re.sub(r'[^\w\d]', '', repo)
 
-    db_client = create_collection(collection_name=collection_name, dimension=EMB_DIM, max_length=MAX_LENGTH)
+    db_client = create_collection(collection_name=collection_name, dimension=emb_size, metric_type=MILVUS_METRIC_TYPE, max_length=MILVUS_MAX_LENGTH, enable_dynamic=MILVUS_DYN)
+    
+    mail_out_dir = f"{mail_out_dir}_{'T' if doThreads else 'NT'}"
     
     if db_client != None:
     
@@ -33,20 +40,20 @@ def main(mail_out_dir, mailbox, do_elmx):
             p.mkdir(parents=True, exist_ok=True) 
 
             if do_elmx:
-                mail_converter = EmlxConverter()
-                mail_converter.read_mails(mailbox, mail_out_dir)
+                mail_converter = EmlxConverter(mailbox, doThreads)
+                mail_converter.read_mails(mail_out_dir)
             else:
-                mail_converter = EmlConverter()
-                mail_converter.read_mails(ORIG_MAILS_DIR, mail_out_dir)
+                mail_converter = EmlConverter(ORIG_MAILS_DIR)
+                mail_converter.read_mails(mail_out_dir)
     
-        chunks = mail_converter.make_chunks(mail_out_dir, max_chunk_len=MAX_CHUNK_LEN, max_chunk_excess=MAX_CHUNK_EXCESS)
+        chunks = MailConverter.make_chunks(mail_out_dir, max_chunk_len=MAX_CHUNK_LEN, max_chunk_excess=MAX_CHUNK_EXCESS)
         upload_embeddings(client=db_client, chunks=chunks, collection_name=collection_name)
          
    
     # embedder = create_embedder()
-    milvus_retriever = get_retriever(collection_name=collection_name, k=LEN_CTX)
+    milvus_retriever = get_retriever(collection_name=collection_name, k=MILVUS_LEN_CTX)
     
-    llm = conn_LLM(model=GEN_MODEL, max_tokens=MAX_TOKENS)
+    llm = conn_LLM(model=GEN_MODEL)
 
     # Instantiate the RAG system
     rag_system = RAG(retriever=milvus_retriever)
@@ -93,6 +100,14 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        '-t', '--threaded',
+        dest='doThreads',
+        action='store_true',
+        default=True,
+        help='specifies whether to group the emails in threads',
+    )
+
+    parser.add_argument(
         '-x', '--emlx',
         dest='elmx',
         action='store_true',
@@ -107,4 +122,4 @@ if __name__ == "__main__":
         parser.print_help()
         exit(-1)
 
-    main(args.out_dir, args.mailbox, args.elmx)
+    main(args.out_dir, args.mailbox, args.doThreads, args.elmx)

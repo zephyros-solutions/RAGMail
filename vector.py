@@ -23,7 +23,7 @@ class RAG(dspy.Module):
     
 
 
-def create_collection(collection_name:str, dimension:int, max_length:int) -> MilvusClient:
+def create_collection(collection_name:str, dimension:int, metric_type:str, max_length:int, enable_dynamic:bool) -> MilvusClient:
     # Initialize Milvus client
     milvus_client = MilvusClient(uri=MILVUS_URI, token=MILVUS_TOKEN)
     
@@ -35,9 +35,9 @@ def create_collection(collection_name:str, dimension:int, max_length:int) -> Mil
             primary_field_name="id",
             vector_field_name="embedding",
             id_type="int",
-            metric_type="IP",
+            metric_type=metric_type,
             max_length=max_length,
-            enable_dynamic=True,
+            enable_dynamic=enable_dynamic,
         )
         return milvus_client
     else:
@@ -53,6 +53,11 @@ def my_embedder(texts:list[str]) -> list[float]:
         embedding = response["embedding"]
         embeddings.append(embedding)
     return embeddings
+
+def get_emb_size():
+    sz = len(my_embedder(['Ciao'])[0])
+    print(f"Embeddings are of size {sz}")
+    return sz
 
 def upload_embeddings(client, chunks:list[str], collection_name:str) -> None:
     for idx,chunk in enumerate(tqdm(chunks, desc="Loading embeddings in DB")):
@@ -84,10 +89,11 @@ def get_retriever(collection_name:str, k:int) -> MilvusRM:
 
 
 def create_embedder(dimensions:int) -> dspy.Embedder:
+    # https://github.com/stanfordnlp/dspy/blob/6178c28ce96b2ecb8a21c722ff06cac58b0bb83c/dspy/clients/embedding.py#L5
     embedder = dspy.Embedder(my_embedder, dimensions=dimensions)
     return embedder
 
-def conn_LLM(model, max_tokens):
+def conn_LLM(model):
 
     # # Connect to Llama3 hosted with Ollama
     # lm = dspy.OllamaLocal(

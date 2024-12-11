@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 import emlx
 import glob
 
-from slugify import slugify
 from email import policy
 from email.parser import BytesParser
 from tqdm import tqdm
@@ -59,32 +58,36 @@ class MailConverter:
           else:
                self.folder[key] = [mail]
 
-     def saveMsg(self, mail_out_dir):
+     def saveMsg(self, mail_out_dir, doThreads):
           for key in self.folder.keys():
                values = self.folder[key]
                if len(values) == 1:
-                    values[0].save(mail_out_dir)
+                    values[0].save(mail_out_dir, isReply=False)
                else:
                     values.sort(key=lambda x: x.Date, reverse=False)
                     # breakpoint()
                     mail = values.pop(0)
                     for reply in values:
-                         cnt = f"\n{reply.From} risponde:\n{reply.Content}"
-                         mail.addContent(cnt)
-                    mail.save(mail_out_dir)
+                         if doThreads:
+                              mail.addReply(reply)
+                         else:
+                              reply.save(mail_out_dir, isReply=True)
+                    mail.save(mail_out_dir, isReply=False)
                     # breakpoint()
 
 
 class EmlConverter(MailConverter):
      '''
+          At the moment this is not at the level of the Emlx converter.
      '''
 
-     def __init__(self):
+     def __init__(self, mail_in_dir):
           super().__init__()
+          self.mail_in_dir = mail_in_dir
 
-     def read_mails(self, mail_in_dir, mail_out_dir):
+     def read_mails(self, mail_out_dir):
 
-          if os.path.samefile(mail_in_dir, mail_out_dir):
+          if os.path.samefile(self.mail_in_dir, mail_out_dir):
                raise Exception("In and Out directories cannot be the same")
           
           nr_mails = 0
@@ -92,7 +95,7 @@ class EmlConverter(MailConverter):
           nr_html_mails = 0
           nr_html_text_mails = 0
           
-          filepaths = [file for file in glob.iglob(f"{mail_in_dir}/*.eml", recursive=False)]
+          filepaths = [file for file in glob.iglob(f"{self.mail_in_dir}/*.eml", recursive=False)]
 
           for filepath in tqdm(filepaths,desc="Processing eml mails"):
                # print(f"file: {filepath}")
@@ -181,17 +184,19 @@ class EmlxConverter(MailConverter):
      '''
 
 
-     def __init__(self):
+     def __init__(self, mailbox:str, doThreads:bool):
           super().__init__()
+          self.mailbox = mailbox
+          self.doThreads = doThreads
 
-     def read_mails(self, mailbox, mail_out_dir):
+     def read_mails(self, mail_out_dir):
           nr_mails = 0
           nr_text_mails = 0
           nr_html_mails = 0
           nr_html_text_mails = 0
           mismatch = 0
 
-          filepaths = [file for file in glob.iglob(f"/Users/{USERNAME}/Library/Mail/**/{mailbox}/**/*.emlx", recursive=True)]
+          filepaths = [file for file in glob.iglob(f"/Users/{USERNAME}/Library/Mail/**/{self.mailbox}/**/*.emlx", recursive=True)]
           for filepath in tqdm(filepaths,desc="Processing emlx mails"):
                # print(f"file: {filepath}")
                nr_mails = nr_mails + 1
@@ -244,7 +249,7 @@ class EmlxConverter(MailConverter):
                # quoted_mail.save(mail_out_dir)
                
 
-          self.saveMsg(mail_out_dir)
+          self.saveMsg(mail_out_dir, self.doThreads)
           print(f"Mails: {nr_mails}, of which {nr_text_mails} text, {nr_html_text_mails} both text and html, and {nr_html_mails} html")
-          print(f"Mismatch: {mismatch}")
+          print(f"Time mismatches: {mismatch}")
 
