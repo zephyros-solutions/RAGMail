@@ -23,7 +23,7 @@ def my_embedder(texts:list[str]) -> list[float]:
         embeddings.append(embedding)
     return embeddings
 
-def get_emb_size():
+def get_emb_size() -> int:
     sz = len(my_embedder(['Ciao'])[0])
     print(f"Embeddings are of size {sz}")
     return sz
@@ -150,7 +150,7 @@ class RMClient(dspy.Retrieve):
             
             # breakpoint()
             if self.sparse_embedding_function:
-                sparse_result = self.sparse_embedding_function.encode_documents([chunk])
+                sparse_result = self.sparse_embedding_function().encode_documents([chunk])
                 if type(sparse_result) == dict:
                     sparse_vec = sparse_result["sparse"][[0]]
                 else:
@@ -185,11 +185,14 @@ class RMClient(dspy.Retrieve):
             # breakpoint()
 
     def forward(self, question:str, k:Optional[int]=None) -> dspy.Prediction:
-
+        # breakpoint()
         k = k if k else self.k
+        if self.rerank_function:
+            k = k * 2
+        # breakpoint()
         if self.sparse_embedding_function:
             sparse_search_params = {
-                'data' : self.sparse_embedding_function.encode_documents([question])['sparse'],
+                'data' : self.sparse_embedding_function().encode_documents([question])['sparse'],
                 'anns_field' : SPARSE_FIELD_NAME,
                 'limit' : k,
                 'param': {'drop_ratio_search': 0.2},
@@ -197,9 +200,9 @@ class RMClient(dspy.Retrieve):
 
             sparse_res = self.client.search(
                 collection_name=self.collection_name,
-                data=self.sparse_embedding_function.encode_documents([question])['sparse'],
-                anns_field=SPARSE_FIELD_NAME,
-                limit=k,
+                data=sparse_search_params['data'],
+                anns_field=sparse_search_params['anns_field'],
+                limit=sparse_search_params['limit'],
                 search_params=sparse_search_params['param'],
                 output_fields=[
                         TEXT_FIELD_NAME
@@ -222,9 +225,9 @@ class RMClient(dspy.Retrieve):
 
         dense_res = self.client.search(
             collection_name=self.collection_name,
-            data=self.dense_embedding_function([question]),
-            anns_field=DENSE_FIELD_NAME,
-            limit=k,
+            data=dense_search_params['data'],
+            anns_field=dense_search_params['anns_field'],
+            limit=dense_search_params['limit'],
             search_params=dense_search_params['param'],
             output_fields=[
                     TEXT_FIELD_NAME

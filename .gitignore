@@ -168,3 +168,4 @@ proc_mails
 .milvus.db.lock
 proc_mails_T
 milvus_test.db
+test.py

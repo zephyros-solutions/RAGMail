@@ -1,13 +1,18 @@
 import dspy
 
 class RAG(dspy.Module):
-    def __init__(self, retriever):
+    def __init__(self, retriever, context):
         self.respond = dspy.ChainOfThought('context, question -> response')
+        self.context = context
         self.retriever = retriever
 
     def forward(self, question):
         # breakpoint()
-        context = self.retriever(question)
+        if self.context == None:
+            context = self.retriever(question)
+        else:
+            context = self.context
+        breakpoint()
         return self.respond(context=context, question=question)
     
 

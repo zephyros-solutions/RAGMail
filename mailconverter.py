@@ -14,7 +14,17 @@ from globals import USERNAME
 class MailConverter:
 
      CHUNKS_FILE = "chunks.txt"
-     
+     @staticmethod
+     def make_blob(mail_out_dir):
+          blob = ""
+          filepaths = [file for file in glob.iglob(f"{mail_out_dir}/*.{Mail.EXT}", recursive=False)]
+          for filepath in tqdm(filepaths, desc="Making blob"):
+               with open(filepath, "r", encoding="utf-8") as mail_file:
+                    file_cnt = mail_file.read()
+
+                    blob = blob + "\n" + file_cnt
+          return blob
+
      @staticmethod
      def make_chunks(mail_out_dir, max_chunk_len, max_chunk_excess):
           text_chunks = []
