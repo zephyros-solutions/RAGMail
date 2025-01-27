@@ -6,9 +6,11 @@ from pymilvus.model.hybrid import BGEM3EmbeddingFunction
 ORIG_MAILS_DIR = "./orig_mails"
 USERNAME = 'SB'
 
+
 ######  CHUNKING
 MAX_CHUNK_LEN = 1000
 MAX_CHUNK_EXCESS = 2
+TOK2CHAR = 2.5
 
 ######  MILVUS
 MILVUS_URI = './milvus.db'
@@ -61,26 +63,26 @@ GEN_MODELS = {
                   'ctx_len': 131072,
                   'emb_len': 8192
               },
-    'vicuna' : {
-                  'name': 'wizard-vicuna-uncensored:latest',
-                  'parameters': 6.7 * 10**9,
-                  'ctx_len': 2048,
-                  'emb_len': 4096
-              },
     'llama3_inst' : {
-                  'name': 'llama3:8b-instruct-q5_1',
+                  'name': 'ollama_chat/llama3:8b-instruct-q5_1',
                   'parameters': 8.0 * 10**9,
                   'ctx_len': 8192,
                   'emb_len': 4096
               },
     'llama3' : {
-                  'name': 'llama3:latest',
+                  'name': 'ollama_chat/llama3:latest',
                   'parameters': 8.0 * 10**9,
                   'ctx_len': 8192,
                   'emb_len': 4096
               },
+    'vicuna' : {
+                  'name': 'ollama_chat/wizard-vicuna-uncensored:latest',
+                  'parameters': 6.7 * 10**9,
+                  'ctx_len': 2048,
+                  'emb_len': 4096
+              },
     'llama3.2' : {
-                  'name': 'llama3.2:latest',
+                  'name': 'ollama_chat/llama3.2:latest',
                   'parameters': 3.2 * 10**9,
                   'ctx_len': 131072,
                   'emb_len': 3072

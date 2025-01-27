@@ -16,6 +16,7 @@ class MailConverter:
      CHUNKS_FILE = "chunks.txt"
      @staticmethod
      def make_blob(mail_out_dir):
+          # breakpoint()
           blob = ""
           filepaths = [file for file in glob.iglob(f"{mail_out_dir}/*.{Mail.EXT}", recursive=False)]
           for filepath in tqdm(filepaths, desc="Making blob"):
@@ -58,8 +59,10 @@ class MailConverter:
                #           chunks_file.write(chunk.strip() + "\n"
           return text_chunks
 
-     def __init__(self):
+     def __init__(self,start_date:datetime, end_date:datetime):
           self.folder = {}
+          self.start_date = start_date
+          self.end_date = end_date
      
      def add_convrs(self, mail):
           key = f"{mail.CoversationID}"
@@ -194,8 +197,8 @@ class EmlxConverter(MailConverter):
      '''
 
 
-     def __init__(self, mailbox:str, doThreads:bool):
-          super().__init__()
+     def __init__(self, mailbox:str, doThreads:bool, start_date:datetime, end_date:datetime):
+          super().__init__(start_date=start_date, end_date=end_date)
           self.mailbox = mailbox
           self.doThreads = doThreads
 
@@ -214,7 +217,23 @@ class EmlxConverter(MailConverter):
 
                mail = Mail(os.path.basename(filepath))
                # mail = RAGMail()
+               # breakpoint()
+               
+               mail_date = Mail.parse_date(m.headers["Date"])
+               if mail_date < self.start_date or mail_date > self.end_date:
+                    # breakpoint()
+                    continue
 
+               mail.setDate(mail_date)
+               # Try to fix strange mismatch in dates
+               if not datetime.fromtimestamp(m.plist['date-received']).replace(tzinfo=timezone.utc) == mail.Date:
+                    if not datetime.fromtimestamp(m.plist['date-received']).replace(tzinfo=mail.Date.tzinfo) == mail.Date:
+                         # breakpoint()
+                         delta = min(datetime.fromtimestamp(m.plist['date-received']).replace(tzinfo=timezone.utc) - mail.Date, datetime.fromtimestamp(m.plist['date-received']).replace(tzinfo=mail.Date.tzinfo) - mail.Date)
+                         mail.Date = mail.Date + delta
+                         mismatch = mismatch + 1
+                    # breakpoint()
+               
                mail.setFrom(m.headers["From"])
           
                if "To" in m.headers:
@@ -226,17 +245,7 @@ class EmlxConverter(MailConverter):
                     mail.setSubject(m.headers["Subject"])
                else:
                     mail.setSubject(None)
-                    
-               mail.setDate(m.headers["Date"])
-               # Try to fix strange mismatch in dates
-               if not datetime.fromtimestamp(m.plist['date-received']).replace(tzinfo=timezone.utc) == mail.Date:
-                    if not datetime.fromtimestamp(m.plist['date-received']).replace(tzinfo=mail.Date.tzinfo) == mail.Date:
-                         # breakpoint()
-                         delta = min(datetime.fromtimestamp(m.plist['date-received']).replace(tzinfo=timezone.utc) - mail.Date, datetime.fromtimestamp(m.plist['date-received']).replace(tzinfo=mail.Date.tzinfo) - mail.Date)
-                         mail.Date = mail.Date + delta
-                         mismatch = mismatch + 1
-                    # breakpoint()
-               
+
                if m.text != None and m.html != None:
                     # breakpoint()
                     nr_html_text_mails = nr_html_text_mails + 1

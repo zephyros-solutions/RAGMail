@@ -8,20 +8,23 @@ from globals import MILVUS_URI, MILVUS_TOKEN
 from globals import TEXT_FIELD_NAME
 from globals import SPARSE_FIELD_NAME, SPARSE_INDEX_NAME, SPARSE_INDEX_TYPE, SPARSE_METRIC_TYPE, SPARSE_INDEX_PARAMS
 from globals import DENSE_FIELD_NAME, DENSE_INDEX_NAME, DENSE_INDEX_TYPE, DENSE_METRIC_TYPE, DENSE_INDEX_PARAMS
-from globals import DENSE_EMB_MODEL
+from globals import DENSE_EMB_MODELS
 
 from typing import List, Union, Optional
 
-def my_embedder(texts:list[str]) -> list[float]:
-    embeddings = []
-    if type(texts) is not list:
-        raise Exception(f"texts is of type {type(texts)} instead of list")
-    
-    for text in texts:
-        response = ollama.embeddings(model=DENSE_EMB_MODEL, prompt=text)
-        embedding = response["embedding"]
-        embeddings.append(embedding)
-    return embeddings
+
+def my_embedder(name) -> Function:
+    def embedder(texts:list[str]) -> list[float]:
+        embeddings = []
+        if type(texts) is not list:
+            raise Exception(f"texts is of type {type(texts)} instead of list")
+        
+        for text in texts:
+            response = ollama.embeddings(model=DENSE_EMB_MODELS[f'{name}']['name'], prompt=text)
+            embedding = response["embedding"]
+            embeddings.append(embedding)
+        return embeddings
+    return embedder
 
 def get_emb_size() -> int:
     sz = len(my_embedder(['Ciao'])[0])

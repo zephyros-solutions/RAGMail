@@ -32,11 +32,16 @@ class Mail:
                     # rf'\n(?:On \d\d\/\d\d\/\d\d \d\d:\d\d, )?({mailer_pt}) wrote:\n({ending})?',
                     rf'\n?[\w <>\.@\|,\/:]+ha scritto:({ending})?',                    
                     rf'\nScrive [\s\S]+:\n({ending})?',
-                    rf'\n?[\w <>\.@\|,\/:]+wrote:({ending})?',
+                    # rf'\n?[\w <>\.@\|,\/:]+wrote:({ending})?',
+                    rf'[\n|\.] [\w| |@|\.]+wrote:({ending})?',
                     rf'[\n ]?+-+ ?Original Message ?-+[\n ]({ending})?',
+                    rf'\w+ \w+ wrote:({ending})?',
+                    rf' (\w+\.)?\w+@\w+\.\w+(\.\w+)? wrote:({ending})?',
+                    rf'\w+ \w+ <(\w+\.)?\w+@\w+\.\w+(\.\w+)?> wrote:({ending})?'
           ]
           
           flt_txt = content_str
+          
           for pattern in patterns:
                p = re.compile(pattern)
                match = p.search(flt_txt)
@@ -58,7 +63,7 @@ class Mail:
           
           # if flt_txt.find('Original Message') != -1:
           #      breakpoint()
-
+          
           return flt_txt
 
      
@@ -91,6 +96,11 @@ class Mail:
           '''
           patterns = { r'\xa0' : ' ',
                       r'=20' : ' ',
+                      r'=3D' : '',
+                      r'=EC' : 'í',
+                      r'=B9' : '\'',
+                      r'=E8' : 'é',
+                      r'=E2=80=99' : '\'',
                       r'=c2=a1' : '¡', r'=c2=a2' : '¢', r'=c2=a3' : '£', r'=c2=a4' : '¤', r'=c2=a5' : '¥', r'=c2=a6' : '¦',
                       r'=c2=a7' : '§', r'=c2=a8' : '¨', r'=c2=a9' : '©', r'=c2=aa' : 'ª', r'=c2=ab' : '«', r'=c2=ac' : '¬',
                       r'=c2=ad' : '­', r'=c2=ae' : '®', r'=c2=af' : '¯', r'=c2=b0' : '°', r'=c2=b1' : '±', r'=c2=b2' : '²',
@@ -111,8 +121,8 @@ class Mail:
           
 
           flt_txt = text
-          for pattern in patterns:
-               flt_txt = re.sub(pattern, ' ', flt_txt, flags=re.IGNORECASE)
+          for key,value in patterns.items():
+               flt_txt = re.sub(key, value, flt_txt, flags=re.IGNORECASE)
 
           # Normalize whitespace to single spaces, strip leading/trailing whitespace
           flt_txt = re.sub(r'\s+', ' ', flt_txt).strip()
@@ -228,8 +238,7 @@ class Mail:
                     content_str = orig_content
           else:
                raise Exception(f"Content of {self.Subject} cannot be empty")
-          
-          
+                              
           content_str = Mail.filter_text(content_str)
 
           self.Content = Mail.handle_replies(content_str)

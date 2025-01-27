@@ -162,10 +162,9 @@ cython_debug/
 #.idea/
 alias.py
 orig_mails
-milvus.db
+proc_mails*
 
-proc_mails
+milvus.db
 .milvus.db.lock
-proc_mails_T
 milvus_test.db
-test.py
+test*.py
