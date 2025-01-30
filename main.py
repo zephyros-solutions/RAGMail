@@ -26,11 +26,12 @@ from globals import MAX_CHUNK_LEN, MAX_CHUNK_EXCESS, TOK2CHAR
 from globals import OLLAMA_API_BASE, OLLAMA_API_KEY
 from globals import MILVUS_DYN, MILVUS_MAX_LENGTH, MILVUS_LEN_CTX
 from globals import DENSE_EMB_MODELS, DENSE_METRIC_TYPE
-from globals import SPARSE_EMB_FUN
+from globals import SPARSE_EMB_FUNS
 from globals import GEN_MODELS
 from globals import RANKER
 
 from retriever import RMClient, my_embedder
+from vocab import summary_prt
 
 
 def conn_LLM(model):
@@ -62,7 +63,7 @@ def do_blob(mail_out_dir,ctx_len:int, llm):
         for i in range(nr_segs):
             inf = i * seg_len
             sup = min((i+1) * seg_len,len(context))
-            prompt = f'Riassumi per favore la seguente conversazione in massimo {int(TOK2CHAR*ctx_len/nr_segs)} caratteri: {context[inf:sup]}'
+            prompt = summary_prt(max_char=int(TOK2CHAR*ctx_len/nr_segs), content=context[inf:sup])
             breakpoint()
             new_ctx = f'{new_ctx}{llm(prompt)} '
     else:
@@ -72,32 +73,30 @@ def do_blob(mail_out_dir,ctx_len:int, llm):
 
     return rag_system
 
-def do_grep(mail_out_dir,ctx_len:int, llm):
+def do_grep(mail_out_dir:str, llm):
 
-    context = MailConverter.make_blob(mail_out_dir=mail_out_dir)
-    # breakpoint()
-    if len(context) > TOK2CHAR*ctx_len:
-        seg_len = int(TOK2CHAR*ctx_len)
-        nr_segs = int(len(context)/seg_len)
-        new_ctx = ""
-        for i in range(nr_segs):
-            inf = i * seg_len
-            sup = min((i+1) * seg_len,len(context))
-            prompt = f'Riassumi per favore la seguente conversazione in massimo {int(TOK2CHAR*ctx_len/nr_segs)} caratteri: {context[inf:sup]}'
-            breakpoint()
-            new_ctx = f'{new_ctx}{llm(prompt)} '
-    else:
-        new_ctx = context
-
-    rag_system = RAG(retriever=None, context=new_ctx)
+    def retriever(prompt):
+        breakpoint()
+        concepts = llm(prompt)
+        context = []
+        filepaths = MailConverter.mail_paths(mail_out_dir)
+        for filepath in filepaths:
+            with open(filepath, "r", encoding="utf-8") as mail_file:
+                file_cnt = mail_file.read()
+                for concept in concepts:
+                    if concept.lower() in file_cnt.lower():
+                        context.append(file_cnt)
+        return context
+    
+    rag_system = RAG(retriever=retriever, context=None)
 
     return rag_system
 
-def do_rag(mail_out_dir, mailbox, doThreads, dense_emb, force):
+def do_rag(mail_out_dir, dense_emb, sparse_emb, force):
     
     dim_dense_emb = dense_emb['emb_len']
     
-    repo = f"{mailbox}_{'T' if doThreads else 'NT'}_{dense_emb['name']}_{SPARSE_EMB_FUN.__name__ if SPARSE_EMB_FUN else 'NS'}"
+    repo = f"{mail_out_dir}_{dense_emb['name']}_{sparse_emb.__name__ if sparse_emb else 'NS'}"
     # breakpoint()
     # collection name can only contain numbers, letters and underscores
     collection_name = re.sub(r'[^\w\d]', '', repo)
@@ -105,13 +104,13 @@ def do_rag(mail_out_dir, mailbox, doThreads, dense_emb, force):
     print(f"Working with collection: {collection_name}")
 
     rm_client = RMClient(collection_name, k = MILVUS_LEN_CTX, dim_dense_emb=dim_dense_emb, max_length=MILVUS_MAX_LENGTH, 
-                         dense_embedding_function=my_embedder(dense_emb['name']), sparse_embedding_function=SPARSE_EMB_FUN, rerank_function=RANKER,
+                         dense_embedding_function=my_embedder(dense_emb['name']), sparse_embedding_function=sparse_emb, rerank_function=RANKER,
                          use_contextualize_embedding=False)
 
     
     
     if force or rm_client.build_collection(enable_dynamic_field=MILVUS_DYN):
-        
+        # breakpoint()
         chunks = MailConverter.make_chunks(mail_out_dir, max_chunk_len=MAX_CHUNK_LEN, max_chunk_excess=MAX_CHUNK_EXCESS)
         rm_client.upload_embeddings(chunks, metadata={})
          
@@ -142,7 +141,7 @@ def do_mail(mail_out_dir, mailbox, doThreads, do_elmx, start_date, end_date):
 
     return mail_processed
 
-def main(mail_out_dir, mailbox, doThreads, do_elmx, method, dense, gen, start, end):
+def main(mail_out_dir, mailbox, doThreads, do_elmx, method, dense, sparse, gen, start, end):
     
     in_fmt = r'%d/%m/%Y'
     out_fmt = r'%d-%m-%Y'
@@ -167,7 +166,11 @@ def main(mail_out_dir, mailbox, doThreads, do_elmx, method, dense, gen, start, e
     if method == 'blob':
         rag_system = do_blob(mail_out_dir=tr_mail_out_dir, ctx_len=GEN_MODELS[f'{gen}']['ctx_len'], llm=llm)
     elif method == 'rag':
-        rag_system = do_rag(mail_out_dir=tr_mail_out_dir, mailbox=mailbox, doThreads=doThreads, force=force, dense_emb=DENSE_EMB_MODELS[f'{dense}'])
+        rag_system = do_rag(mail_out_dir=tr_mail_out_dir, force=force, dense_emb=DENSE_EMB_MODELS[f'{dense}'], sparse_emb=SPARSE_EMB_FUNS[f'{sparse}'])
+    elif method == 'grep':
+        rag_system = do_grep(mail_out_dir=tr_mail_out_dir, llm=llm)
+    else:
+        raise Exception(f'Method {method} not known')
     
     while True:
         try:
@@ -249,6 +252,15 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        '--sparse',
+        dest='sparse',
+        action='store',
+        required=False,
+        default = 'BGEM3',
+        help='specifies the sparse embedder to use',
+    )
+
+    parser.add_argument(
         '-t', '--threaded',
         dest='doThreads',
         action='store_true',
@@ -270,5 +282,8 @@ if __name__ == "__main__":
         parser.print_help()
         exit(-1)
 
+    if args.method == 'rag' and args.dense is None:
+        parser.error("--method rag requires -d (--dense) <dense embedder>")
+
     main(mail_out_dir=args.out_dir, mailbox=args.mailbox, doThreads=args.doThreads, do_elmx=args.elmx, 
-         method=args.method, dense=args.dense, gen=args.gen, start=args.start, end=args.end)
+         method=args.method, dense=args.dense, sparse=args.sparse, gen=args.gen, start=args.start, end=args.end)

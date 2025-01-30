@@ -4,6 +4,7 @@ import re
 from bs4 import BeautifulSoup
 
 from alias import alias
+from vocab import mail_preamble
 
 
 class Mail:
@@ -186,10 +187,8 @@ class Mail:
           return self.get_content(False)
      
      def get_content(self, isReply):
-          if not isReply:
-               cnt = f'Il {self.Date} {self.From} dice a {self.To} a proposito di {self.Subject}:\n{self.Content}'
-          else:
-               cnt = f'Il {self.Date} {self.From} risponde a {self.To} a proposito di {self.Subject}:\n{self.Content}'
+          cnt = mail_preamble( self.Date, self.From, self.To, self.Subject, self.Content, isReply)
+          
           return cnt
 
      def save(self, mail_out_dir, isReply):

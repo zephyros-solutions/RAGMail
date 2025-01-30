@@ -15,10 +15,15 @@ class MailConverter:
 
      CHUNKS_FILE = "chunks.txt"
      @staticmethod
+     def mail_paths(mail_out_dir, ext=Mail.EXT):
+          mailpaths = [file for file in glob.iglob(f"{mail_out_dir}/*.{ext}", recursive=False)]
+          return mailpaths
+
+     @staticmethod
      def make_blob(mail_out_dir):
           # breakpoint()
           blob = ""
-          filepaths = [file for file in glob.iglob(f"{mail_out_dir}/*.{Mail.EXT}", recursive=False)]
+          filepaths = MailConverter.mail_paths(mail_out_dir)
           for filepath in tqdm(filepaths, desc="Making blob"):
                with open(filepath, "r", encoding="utf-8") as mail_file:
                     file_cnt = mail_file.read()
@@ -29,7 +34,7 @@ class MailConverter:
      @staticmethod
      def make_chunks(mail_out_dir, max_chunk_len, max_chunk_excess):
           text_chunks = []
-          filepaths = [file for file in glob.iglob(f"{mail_out_dir}/*.{Mail.EXT}", recursive=False)]
+          filepaths = MailConverter.mail_paths(mail_out_dir)
           for filepath in tqdm(filepaths, desc="Making chunks"):
                current_chunk = ""
                with open(filepath, "r", encoding="utf-8") as mail_file:
@@ -108,7 +113,7 @@ class EmlConverter(MailConverter):
           nr_html_mails = 0
           nr_html_text_mails = 0
           
-          filepaths = [file for file in glob.iglob(f"{self.mail_in_dir}/*.eml", recursive=False)]
+          filepaths = super.mail_paths(self.mail_in_dir, 'eml')
 
           for filepath in tqdm(filepaths,desc="Processing eml mails"):
                # print(f"file: {filepath}")

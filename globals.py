@@ -29,9 +29,12 @@ DENSE_INDEX_PARAMS = {} # {"nlist": 128}
 DENSE_METRIC_TYPE = 'IP' # COSINE
 
 # https://milvus.io/api-reference/pymilvus/v2.4.x/EmbeddingModels/BGEM3EmbeddingFunction/BGEM3EmbeddingFunction.md
-# SPARSE_EMB_FUN = BGEM3EmbeddingFunction
-# SPARSE_EMB_FUN_NAME = SPARSE_EMB_FUN.__module__
-SPARSE_EMB_FUN = BGEM3EmbeddingFunction
+
+SPARSE_EMB_FUNS = {
+    'BGEM3' : BGEM3EmbeddingFunction,
+}
+    
+
 SPARSE_FIELD_NAME = 'sparse'
 SPARSE_INDEX_NAME = 'sparse_index'
 SPARSE_INDEX_TYPE = 'SPARSE_INVERTED_INDEX' #SPARSE_INVERTED_INDEX  WAND_INVERTED_INDEX AUTOINDEX

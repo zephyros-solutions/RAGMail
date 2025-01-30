@@ -1,0 +1,14 @@
+
+
+threaded = {
+    'John Dull' : ['john@dull.com', 'jd@dull.com', 'Dull John', 'john d.'],
+    'Marie Mold' : ['mold@mold.com', 'mariem@mold.com', 'marie.mold@mold.com', 'marie m.'],
+}
+
+alias = {
+'Amazon' : ['auto-confirm@amazon.com', 'amazon@amazon.com'],
+'Mailing List' : ['products-sale@example.com', 'products@example.com'],
+ }
+
+alias.update(threaded)
+# for key in sorted(alias.keys(),key=str.casefold): print(f"'{key}' : {alias[key]},")

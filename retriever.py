@@ -13,14 +13,15 @@ from globals import DENSE_EMB_MODELS
 from typing import List, Union, Optional
 
 
-def my_embedder(name) -> Function:
+def my_embedder(dense_emb_model) -> Function:
+    # breakpoint()
     def embedder(texts:list[str]) -> list[float]:
         embeddings = []
         if type(texts) is not list:
             raise Exception(f"texts is of type {type(texts)} instead of list")
         
         for text in texts:
-            response = ollama.embeddings(model=DENSE_EMB_MODELS[f'{name}']['name'], prompt=text)
+            response = ollama.embeddings(model=dense_emb_model, prompt=text)
             embedding = response["embedding"]
             embeddings.append(embedding)
         return embeddings
@@ -218,7 +219,7 @@ class RMClient(dspy.Retrieve):
             
             sparse_req = AnnSearchRequest(**sparse_search_params)
         
-        # breakpoint()
+        breakpoint()
         dense_search_params = {
             'data' : self.dense_embedding_function([question]),
             'anns_field' : DENSE_FIELD_NAME,
