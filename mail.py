@@ -181,23 +181,24 @@ class Mail:
           self.Subject = None
           self.Content = None
           self.CoversationID = None
+          self.isReply = False
 
 
      def __str__(self):
-          return self.get_content(False)
+          return self.get_content()
      
-     def get_content(self, isReply):
-          cnt = mail_preamble( self.Date, self.From, self.To, self.Subject, self.Content, isReply)
+     def get_content(self):
+          cnt = mail_preamble( self.Date, self.From, self.To, self.Subject, self.Content, self.isReply)
           
           return cnt
 
-     def save(self, mail_out_dir, isReply):
+     def save(self, mail_out_dir):
           # if self.From != None:
                # out_date = self.Date.strftime(BaseMailConv.OUT_TM_FMT)
                # filename = f'{mail_out_dir}/' + slugify(f'{self.From}_{self.To}_{self.Subject}_{out_date}')
           filename = Path(mail_out_dir,self.orig_file)
           
-          file_cnt = self.get_content(isReply)
+          file_cnt = self.get_content()
           
           with open(filename, 'w') as f:
                f.write(file_cnt)
@@ -248,5 +249,6 @@ class Mail:
           self.CoversationID = id
 
      def addReply(self, reply):
-          cnt = reply.get_content(True)
+          reply.isReplay = True
+          cnt = reply.get_content()
           self.Content = self.Content + '\n' + cnt

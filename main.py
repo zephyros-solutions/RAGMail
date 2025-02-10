@@ -20,7 +20,7 @@ import dspy
 from datetime import datetime, timezone
 
 from rag import RAG
-from mailconverter import MailConverter, EmlConverter, EmlxConverter
+from mailconverter import MailConverter, EmlxConverter
 from globals import ORIG_MAILS_DIR
 from globals import MAX_CHUNK_LEN, MAX_CHUNK_EXCESS, TOK2CHAR
 from globals import OLLAMA_API_BASE, OLLAMA_API_KEY
@@ -31,7 +31,8 @@ from globals import GEN_MODELS
 from globals import RANKER
 
 from retriever import RMClient, my_embedder
-from vocab import summary_prt
+from vocab import summary_prt, entities_prt
+from es import ElSearch
 
 
 def conn_LLM(model):
@@ -52,9 +53,9 @@ def conn_LLM(model):
 
     return lm
 
-def do_blob(mail_out_dir,ctx_len:int, llm):
+def do_blob(mail_source,ctx_len:int, llm):
 
-    context = MailConverter.make_blob(mail_out_dir=mail_out_dir)
+    context = mail_source.make_blob()
     # breakpoint()
     if len(context) > TOK2CHAR*ctx_len:
         seg_len = int(TOK2CHAR*ctx_len)
@@ -64,7 +65,7 @@ def do_blob(mail_out_dir,ctx_len:int, llm):
             inf = i * seg_len
             sup = min((i+1) * seg_len,len(context))
             prompt = summary_prt(max_char=int(TOK2CHAR*ctx_len/nr_segs), content=context[inf:sup])
-            breakpoint()
+            # breakpoint()
             new_ctx = f'{new_ctx}{llm(prompt)} '
     else:
         new_ctx = context
@@ -73,13 +74,34 @@ def do_blob(mail_out_dir,ctx_len:int, llm):
 
     return rag_system
 
-def do_grep(mail_out_dir:str, llm):
+def do_grep(mail_source, llm):
+
+    def retriever(prompt):
+        
+        entities_prompt = entities_prt(prompt=prompt)
+        entities = llm(entities_prompt)[0].split(',')
+        print(f"Extracted entities: {entities}")
+        context = []
+        for mail in mail_source.msgs_array():
+            for entity in entities:
+                # breakpoint()
+                if entity.lower().strip() in mail.get_content().lower():
+                    context.append(mail.get_content())
+        return context
+    
+    rag_system = RAG(retriever=retriever, context=None)
+
+    return rag_system
+
+def do_es(mail_source, llm):
+    es = ElSearch()
+    es.index(mail_source.msgs_array())
 
     def retriever(prompt):
         breakpoint()
         concepts = llm(prompt)
         context = []
-        filepaths = MailConverter.mail_paths(mail_out_dir)
+        filepaths = mail_source.mail_paths()
         for filepath in filepaths:
             with open(filepath, "r", encoding="utf-8") as mail_file:
                 file_cnt = mail_file.read()
@@ -122,29 +144,10 @@ def do_rag(mail_out_dir, dense_emb, sparse_emb, force):
     return rag_system
 
 
-def do_mail(mail_out_dir, mailbox, doThreads, do_elmx, start_date, end_date):
-    mail_processed = False
 
-    if not (p:=Path(mail_out_dir)).is_dir():
-        if mailbox == None:
-            raise Exception(f"mailbox needs to be specified")
-        p.mkdir(parents=True, exist_ok=True) 
-
-        if do_elmx:
-            mail_converter = EmlxConverter(mailbox=mailbox,doThreads=doThreads,start_date=start_date, end_date=end_date)
-            mail_converter.read_mails(mail_out_dir)
-        else:
-            mail_converter = EmlConverter(ORIG_MAILS_DIR)
-            mail_converter.read_mails(mail_out_dir)
-        
-        mail_processed = True
-
-    return mail_processed
-
-def main(mail_out_dir, mailbox, doThreads, do_elmx, method, dense, sparse, gen, start, end):
+def main(mailbox, doThreads, do_elmx, method, dense, sparse, gen, start, end):
     
     in_fmt = r'%d/%m/%Y'
-    out_fmt = r'%d-%m-%Y'
     if start != None:
         start_date = datetime.strptime(start,in_fmt).replace(tzinfo=timezone.utc)
     else:
@@ -156,19 +159,23 @@ def main(mail_out_dir, mailbox, doThreads, do_elmx, method, dense, sparse, gen, 
         end_date = datetime.strptime('01/01/2970',in_fmt).replace(tzinfo=timezone.utc)
 
     
-    tr_mail_out_dir = f"{mail_out_dir}_{'T' if doThreads else 'NT'}_{datetime.strftime(start_date,out_fmt)}_{datetime.strftime(end_date,out_fmt)}"
     # breakpoint()
 
-    force = do_mail(mail_out_dir=tr_mail_out_dir, mailbox=mailbox, doThreads=doThreads, do_elmx=do_elmx, start_date=start_date, end_date=end_date)
+    
+    mail_converter = EmlxConverter(mailbox=mailbox,doThreads=doThreads,start_date=start_date, end_date=end_date)
+    mail_converter.read_mails()
+    mail_converter.save_msgs()
     
     llm = conn_LLM(model=GEN_MODELS[f'{gen}'])
 
     if method == 'blob':
-        rag_system = do_blob(mail_out_dir=tr_mail_out_dir, ctx_len=GEN_MODELS[f'{gen}']['ctx_len'], llm=llm)
-    elif method == 'rag':
-        rag_system = do_rag(mail_out_dir=tr_mail_out_dir, force=force, dense_emb=DENSE_EMB_MODELS[f'{dense}'], sparse_emb=SPARSE_EMB_FUNS[f'{sparse}'])
+        rag_system = do_blob(mail_source=mail_converter, ctx_len=GEN_MODELS[f'{gen}']['ctx_len'], llm=llm)
     elif method == 'grep':
-        rag_system = do_grep(mail_out_dir=tr_mail_out_dir, llm=llm)
+        rag_system = do_grep(mail_source=mail_converter, llm=llm)
+    elif method == 'es':
+        rag_system = do_es(mail_source=mail_converter, llm=llm)
+    # elif method == 'rag':
+    #     rag_system = do_rag(mail_out_dir=tr_mail_out_dir, force=mail_processed, dense_emb=DENSE_EMB_MODELS[f'{dense}'], sparse_emb=SPARSE_EMB_FUNS[f'{sparse}'])
     else:
         raise Exception(f'Method {method} not known')
     
@@ -222,7 +229,7 @@ if __name__ == "__main__":
         '-m', '--mailbox',
         dest='mailbox',
         action='store',
-        required=False,
+        required=True,
         help='specifies the name of the mailbox to process',
     )
 
@@ -232,15 +239,6 @@ if __name__ == "__main__":
         action='store',
         required=True,
         help='specifies the method to be used',
-    )
-
-    parser.add_argument(
-        '-o', '--out_dir',
-        dest='out_dir',
-        action='store',
-        required=False,
-        default = './proc_mails',
-        help='specifies the name of the directory to store mails',
     )
 
     parser.add_argument(
@@ -264,6 +262,7 @@ if __name__ == "__main__":
         '-t', '--threaded',
         dest='doThreads',
         action='store_true',
+        default=False,
         help='specifies whether to group the emails in threads',
     )
 
@@ -285,5 +284,5 @@ if __name__ == "__main__":
     if args.method == 'rag' and args.dense is None:
         parser.error("--method rag requires -d (--dense) <dense embedder>")
 
-    main(mail_out_dir=args.out_dir, mailbox=args.mailbox, doThreads=args.doThreads, do_elmx=args.elmx, 
+    main(mailbox=args.mailbox, doThreads=args.doThreads, do_elmx=args.elmx, 
          method=args.method, dense=args.dense, sparse=args.sparse, gen=args.gen, start=args.start, end=args.end)

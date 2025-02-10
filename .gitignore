@@ -169,3 +169,4 @@ milvus.db
 milvus_test.db
 test*.py
 vocab.py
+elasticsearch-8.17.1
