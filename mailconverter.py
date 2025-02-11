@@ -15,13 +15,20 @@ from globals import USERNAME
 class MailConverter:
 
      # CHUNKS_FILE = "chunks.txt"
-
+     OUT_DIR = './proc_mails'
+     OUT_FMT = r'%d-%m-%Y'
      
-     def __init__(self,start_date:datetime, end_date:datetime):
+     def __init__(self,mailbox:str, doThreads:bool, start_date:datetime, end_date:datetime):
           self.folder = {}
           self.proc_folder = {}
           self.start_date = start_date
           self.end_date = end_date
+          if mailbox == None:
+               raise Exception(f"Mailbox needs to be specified")
+          self.mailbox = mailbox
+          self.doThreads = doThreads
+          self.mailsId = f"{self.mailbox}_{'T' if doThreads else 'NT'}_{datetime.strftime(start_date,self.OUT_FMT)}_{datetime.strftime(end_date,self.OUT_FMT)}"
+
      
      def add_convrs(self, mail):
           key = f"{mail.CoversationID}"
@@ -56,6 +63,10 @@ class MailConverter:
                     # breakpoint()
 
      def save_msgs(self):
+          self.mail_out_dir = f"{self.OUT_DIR}_{self.mailsId}"
+          if not (p:=Path(self.mail_out_dir)).is_dir():
+               p.mkdir(parents=True, exist_ok=True) 
+
           for key in self.proc_folder.keys():
                mail = self.proc_folder[key]
                mail.save(self.mail_out_dir)
@@ -169,19 +180,10 @@ class EmlxConverter(MailConverter):
           }
      '''
 
-     OUT_DIR = './proc_mails'
-     OUT_FMT = r'%d-%m-%Y'
 
      def __init__(self, mailbox:str, doThreads:bool, start_date:datetime, end_date:datetime):
-          super().__init__(start_date=start_date, end_date=end_date)
-          self.mailbox = mailbox
-          self.doThreads = doThreads
+          super().__init__(mailbox=mailbox, doThreads=doThreads, start_date=start_date, end_date=end_date)
           
-          self.mail_out_dir = f"{self.OUT_DIR}_{'T' if doThreads else 'NT'}_{datetime.strftime(start_date,self.OUT_FMT)}_{datetime.strftime(end_date,self.OUT_FMT)}"
-          if not (p:=Path(self.mail_out_dir)).is_dir():
-               if mailbox == None:
-                    raise Exception(f"mailbox needs to be specified")
-               p.mkdir(parents=True, exist_ok=True) 
 
 
      def read_mails(self):
@@ -192,7 +194,7 @@ class EmlxConverter(MailConverter):
           mismatch = 0
 
           filepaths = [file for file in glob.iglob(f"/Users/{USERNAME}/Library/Mail/**/{self.mailbox}/**/*.emlx", recursive=True)]
-          for filepath in tqdm(filepaths,desc="Processing emlx mails"):
+          for filepath in tqdm(filepaths,desc="Processing emlx emails"):
                # print(f"file: {filepath}")
                nr_mails = nr_mails + 1
                m = emlx.read(filepath, encoding='utf-8')

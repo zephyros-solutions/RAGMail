@@ -21,7 +21,6 @@ from datetime import datetime, timezone
 
 from rag import RAG
 from mailconverter import MailConverter, EmlxConverter
-from globals import ORIG_MAILS_DIR
 from globals import MAX_CHUNK_LEN, MAX_CHUNK_EXCESS, TOK2CHAR
 from globals import OLLAMA_API_BASE, OLLAMA_API_KEY
 from globals import MILVUS_DYN, MILVUS_MAX_LENGTH, MILVUS_LEN_CTX
@@ -94,20 +93,17 @@ def do_grep(mail_source, llm):
     return rag_system
 
 def do_es(mail_source, llm):
-    es = ElSearch()
-    es.index(mail_source.msgs_array())
+    es = ElSearch(mail_source.mailsId)
+    es.index_mails(mail_source.msgs_array())
 
     def retriever(prompt):
-        breakpoint()
-        concepts = llm(prompt)
         context = []
-        filepaths = mail_source.mail_paths()
-        for filepath in filepaths:
-            with open(filepath, "r", encoding="utf-8") as mail_file:
-                file_cnt = mail_file.read()
-                for concept in concepts:
-                    if concept.lower() in file_cnt.lower():
-                        context.append(file_cnt)
+        mail_ids = es.search(prompt)
+        # breakpoint()
+        
+        for mail_id in mail_ids:
+            context.append(mail_source.proc_folder[mail_id].get_content())
+        # breakpoint()
         return context
     
     rag_system = RAG(retriever=retriever, context=None)
