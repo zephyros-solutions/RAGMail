@@ -13,6 +13,18 @@
 #   https://github.com/stanfordnlp/dspy/blob/main/dsp/modules/lm.py
 # Consider wrapping embedders in dspy.Embedder, maybe it gives batching?
 #   https://github.com/stanfordnlp/dspy/blob/6178c28ce96b2ecb8a21c722ff06cac58b0bb83c/dspy/clients/embedding.py#L5
+# Old LLM list
+# NAME                                   ID              SIZE      MODIFIED      
+# phi4:latest                            ac896e5b8b34    9.1 GB    12 months ago    
+# deepseek-r1:14b                        ea35dfe18182    9.0 GB    12 months ago    
+# deepseek-r1:latest                     0a8c26691023    4.7 GB    13 months ago    
+# galatolo/cerbero-7b-openchat:latest    7a59cede270b    14 GB     15 months ago    
+# llama3.3:latest                        a6eb4748fd29    42 GB     15 months ago    
+# mxbai-embed-large:latest               468836162de7    669 MB    15 months ago    
+# wizard-vicuna-uncensored:latest        72fc3c2b99dc    3.8 GB    15 months ago    
+# llama3:8b-instruct-q5_1                662158bc9277    6.1 GB    15 months ago    
+# llama3:latest                          365c0bd3c000    4.7 GB    15 months ago    
+# llama3.2:latest                        a80c4f17acd5    2.0 GB    15 months ago    
 
 from pathlib import Path
 import re

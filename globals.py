@@ -60,6 +60,18 @@ OLLAMA_API_KEY = ''
 
 # ollama list | cut -f1 -d' ' | grep -v NAME | while read model; do echo "$model"; ollama show "$model"; done
 GEN_MODELS = { 
+    'deepseek-r1_14b' : {
+                  'name': 'ollama_chat/deepseek-r1:14b',
+                  'parameters': 14.8 * 10**9,
+                  'ctx_len': 131072,
+                  'emb_len': 5120
+              },
+    'deepseek-r1' : {
+                  'name': 'ollama_chat/deepseek-r1:latest',
+                  'parameters': 7.6 * 10**9,
+                  'ctx_len': 131072,
+                  'emb_len': 3584
+              },
     'llama3.3' : {
                   'name': 'ollama_chat/llama3.3:latest',
                   'parameters': 70.6 * 10**9,
@@ -72,6 +84,12 @@ GEN_MODELS = {
                   'ctx_len': 8192,
                   'emb_len': 4096
               },
+    'llama3.2' : {
+                  'name': 'ollama_chat/llama3.2:latest',
+                  'parameters': 3.2 * 10**9,
+                  'ctx_len': 131072,
+                  'emb_len': 3072
+              },
     'llama3' : {
                   'name': 'ollama_chat/llama3:latest',
                   'parameters': 8.0 * 10**9,
@@ -83,12 +101,6 @@ GEN_MODELS = {
                   'parameters': 6.7 * 10**9,
                   'ctx_len': 2048,
                   'emb_len': 4096
-              },
-    'llama3.2' : {
-                  'name': 'ollama_chat/llama3.2:latest',
-                  'parameters': 3.2 * 10**9,
-                  'ctx_len': 131072,
-                  'emb_len': 3072
               },
 }
 
