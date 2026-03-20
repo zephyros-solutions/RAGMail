@@ -167,6 +167,9 @@ proc_mails*
 milvus.db
 .milvus.db.lock
 milvus_test.db
-test*.py
 vocab.py
 elasticsearch-8.17.1
+examples
+*.md
+testrex.py
+test_milvus.py
