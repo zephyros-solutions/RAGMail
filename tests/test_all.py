@@ -7,10 +7,10 @@ Run: python test_all.py
 
 import sys
 from pathlib import Path
-from mail import Mail
-from alias import alias
-from rag import RAG
-from retriever import RMClient
+from mail_processing.mail import Mail
+from mail_processing.alias import alias
+from llm.rag import RAG
+from indexing.retriever import RMClient
 from collections import defaultdict
 import random
 

@@ -161,15 +161,16 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 alias.py
-orig_mails
-proc_mails*
+dumps
 
 milvus.db
 .milvus.db.lock
 milvus_test.db
-vocab.py
-elasticsearch-8.17.1
+prompts.py
+elasticsearch-*
 examples
 *.md
 testrex.py
 test_milvus.py
+header.example
+.claude

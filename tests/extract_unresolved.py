@@ -3,8 +3,8 @@
 
 import sys
 from pathlib import Path
-from mail import Mail
-from alias import alias
+from mail_processing.mail import Mail
+from mail_processing.alias import alias
 from collections import defaultdict
 import re
 

@@ -8,19 +8,19 @@ from pathlib import Path
 from email import policy
 from email.parser import BytesParser
 from tqdm import tqdm
+from config.globals import DUMP_DIR
 
-from mail import Mail
-from globals import USERNAME
+from mail_processing.mail import Mail
 
 class MailConverter:
 
      # CHUNKS_FILE = "chunks.txt"
-     OUT_DIR = './proc_mails'
+     PROC_EMAILS_DIR = f'{DUMP_DIR}/proc_emails'
      OUT_FMT = r'%d-%m-%Y'
      
      def __init__(self,mailbox:str, doThreads:bool, start_date:datetime, end_date:datetime):
-          self.folder = {}
-          self.proc_folder = {}
+          self.mails = {}
+          self.proc_mails = {}
           self.start_date = start_date
           self.end_date = end_date
           if mailbox == None:
@@ -31,19 +31,19 @@ class MailConverter:
 
      
      def add_convrs(self, mail):
-          key = f"{mail.CoversationID}"
-          if key in self.folder:
-               self.folder[key].append(mail)
+          key = f"{mail.ConversationID}"
+          if key in self.mails:
+               self.mails[key].append(mail)
           else:
-               self.folder[key] = [mail]
+               self.mails[key] = [mail]
 
      def proc_msgs(self, doThreads):
-          for key in self.folder.keys():
-               values = self.folder[key]
+          for key in self.mails.keys():
+               if key in self.proc_mails:
+                    raise Exception(f'Key {key} already exists in processed emails')
+               values = self.mails[key]
                if len(values) == 1:
-                    if key in self.proc_folder:
-                         raise Exception(f'Key {key} already exists in processed emails')
-                    self.proc_folder[key] = values[0]
+                    self.proc_mails[key] = values[0]
                else:
                     values.sort(key=lambda x: x.Date, reverse=False)
                     # breakpoint()
@@ -54,21 +54,19 @@ class MailConverter:
                          else:
                               reply.isReply=True
                               new_key = f'{key}_{i}'
-                              if new_key in self.proc_folder:
+                              if new_key in self.proc_mails:
                                    raise Exception(f'Key {new_key} already exists in processed emails')
-                              self.proc_folder[new_key] = reply
-                    if key in self.proc_folder:
-                         raise Exception(f'Key {key} already exists in processed emails')
-                    self.proc_folder[key] = mail
+                              self.proc_mails[new_key] = reply
+                    self.proc_mails[key] = mail
                     # breakpoint()
 
      def save_msgs(self):
-          self.mail_out_dir = f"{self.OUT_DIR}_{self.mailsId}"
+          self.mail_out_dir = f"{self.PROC_EMAILS_DIR}/{self.mailsId}"
           if not (p:=Path(self.mail_out_dir)).is_dir():
                p.mkdir(parents=True, exist_ok=True) 
 
-          for key in self.proc_folder.keys():
-               mail = self.proc_folder[key]
+          for key in self.proc_mails.keys():
+               mail = self.proc_mails[key]
                mail.save(self.mail_out_dir)
                     # breakpoint()
 
@@ -146,54 +144,28 @@ class MailConverter:
 
 class EmlxConverter(MailConverter):
      '''
-          m.headers
-          {
-             'X-Mozilla-Keys': '',
-             'Message-ID': '<45EC23F2.4010701@di.unito.it>',
-             'Date': 'Mon, 05 Mar 2007 15:06:42 +0100',
-             'From': 'From',
-             'User-Agent': 'Thunderbird 1.5.0.10 (Windows/20070221)',
-             'MIME-Version': '1.0',
-             'To': 'Recipient',
-             'Subject': 'Re: ',
-             'References': '<1173096974.45ec0a0e22b3f@www.di.unito.it>',
-             'In-Reply-To': '<1173096974.45ec0a0e22b3f@www.di.unito.it>',
-             'Content-Type': 'text/plain; charset=ISO-8859-1; format=flowed',
-             'Content-Transfer-Encoding': '8bit'
-          }
-          m.plist
-          {
-             'conversation-id': 16220,
-             'date-last-viewed': 0,
-             'date-received': 1173100002,
-             'flags':
-                 {
-                  'read': True,
-                  'priority_level': 3
-                 },
-             'remote-id': '695'
-          }
-          m.flags:
-          {
-             'read': True,
-             'priority_level': 3
-          }
+
      '''
 
 
-     def __init__(self, mailbox:str, doThreads:bool, start_date:datetime, end_date:datetime):
+     def __init__(self, username:str, mailbox:str, doThreads:bool, start_date:datetime, end_date:datetime):
           super().__init__(mailbox=mailbox, doThreads=doThreads, start_date=start_date, end_date=end_date)
-          
+          self.username = username
 
 
      def read_mails(self):
+          """
+          Reads the mails from the specified mailbox and processes them into threads if specified. Saves the processed mails to the output directory.
+          Returns True if mails were processed and saved, False if processing was skipped due to existing processed mails.
+          """
+
           nr_mails = 0
           nr_text_mails = 0
           nr_html_mails = 0
           nr_html_text_mails = 0
           mismatch = 0
 
-          filepaths = [file for file in glob.iglob(f"/Users/{USERNAME}/Library/Mail/**/{self.mailbox}/**/*.emlx", recursive=True)]
+          filepaths = [file for file in glob.iglob(f"/Users/{self.username}/Library/Mail/**/{self.mailbox}/**/*.emlx", recursive=True)]
           for filepath in tqdm(filepaths,desc="Processing emlx emails"):
                # print(f"file: {filepath}")
                nr_mails = nr_mails + 1
@@ -250,7 +222,6 @@ class EmlxConverter(MailConverter):
                # mail.save(mail_out_dir)
                self.add_convrs(mail)
                # quoted_mail.save(mail_out_dir)
-               
 
           self.proc_msgs(self.doThreads)
           # self.save_msgs()
@@ -264,7 +235,7 @@ class EmlxConverter(MailConverter):
      def make_blob(self):
           # breakpoint()
           blob = ""
-          for key,value in self.proc_folder.items():
+          for key,value in self.proc_mails.items():
                # breakpoint()
                blob = blob + "\n" + value.get_content()
           return blob
@@ -272,7 +243,7 @@ class EmlxConverter(MailConverter):
      def msgs_array(self):
           msgs = []
 
-          for key,mail_cnt in self.proc_folder.items():
+          for key,mail_cnt in self.proc_mails.items():
               msgs.append(mail_cnt) 
               
           return msgs
@@ -280,7 +251,7 @@ class EmlxConverter(MailConverter):
      def make_chunks(self, max_chunk_len, max_chunk_excess):
           text_chunks = []
 
-          for key,mail_cnt in self.proc_folder.items():
+          for key,mail_cnt in self.proc_mails.items():
                current_chunk = ""
 
                # Split text into sentences while preserving punctuation

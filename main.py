@@ -26,24 +26,26 @@
 # llama3:latest                          365c0bd3c000    4.7 GB    15 months ago    
 # llama3.2:latest                        a80c4f17acd5    2.0 GB    15 months ago    
 
-from pathlib import Path
+import math
 import re
 import dspy
 from datetime import datetime, timezone
+from pathlib import Path
+from tqdm import tqdm
 
-from rag import RAG
-from mailconverter import MailConverter, EmlxConverter
-from globals import MAX_CHUNK_LEN, MAX_CHUNK_EXCESS, TOK2CHAR
-from globals import OLLAMA_API_BASE, OLLAMA_API_KEY
-from globals import MILVUS_DYN, MILVUS_MAX_LENGTH, MILVUS_LEN_CTX
-from globals import DENSE_EMB_MODELS, DENSE_METRIC_TYPE
-from globals import SPARSE_EMB_FUNS
-from globals import GEN_MODELS
-from globals import RANKER
+from llm.rag import RAG
+from mail_processing.mailconverter import MailConverter, EmlxConverter
+from config.globals import DUMP_DIR, MAX_CHUNK_LEN, MAX_CHUNK_EXCESS, TOK2CHAR
+from config.globals import OLLAMA_API_BASE, OLLAMA_API_KEY
+from config.globals import MILVUS_DYN, MILVUS_MAX_LENGTH, MILVUS_LEN_CTX
+from config.globals import DENSE_EMB_MODELS, DENSE_METRIC_TYPE
+from config.globals import SPARSE_EMB_FUNS
+from config.globals import GEN_MODELS
+from config.globals import RANKER
 
-from retriever import RMClient, my_embedder
-from vocab import summary_prt, entities_prt
-from es import ElSearch
+from indexing.retriever import RMClient, my_embedder
+from llm.prompts import Prompts
+from indexing.es import ElSearch
 
 
 def conn_LLM(model):
@@ -64,40 +66,73 @@ def conn_LLM(model):
 
     return lm
 
-def do_blob(mail_source,ctx_len:int, llm):
-
-    context = mail_source.make_blob()
-    # breakpoint()
-    if len(context) > TOK2CHAR*ctx_len:
-        seg_len = int(TOK2CHAR*ctx_len)
-        nr_segs = int(len(context)/seg_len)
+def reduce_context(context, ctx_len, llm):
+    """
+        Reduce context length to fit model limits by splitting into segments and summarizing with the LLM.
+    """
+    max_len = int(TOK2CHAR*ctx_len)
+    prt_len = Prompts.get_blog_prt_len()
+    print(f"Context length: {len(context)} chars, prompt len: {prt_len}, limit for model {ctx_len} tokens is {max_len} chars")
+    if len(context) + prt_len > max_len:
+        seg_max_len = max_len - prt_len
+        nr_segs = math.ceil(len(context)/seg_max_len)
         new_ctx = ""
-        for i in range(nr_segs):
-            inf = i * seg_len
-            sup = min((i+1) * seg_len,len(context))
-            prompt = summary_prt(max_char=int(TOK2CHAR*ctx_len/nr_segs), content=context[inf:sup])
+        print(f"Context exceeds model limit, splitting into {nr_segs} segments and summarizing with LLM...")
+        for i in tqdm(range(nr_segs), desc="Processing segments"):
+            inf = i * seg_max_len if i > 0 else 0
+            sup = min((i+1) * seg_max_len,len(context))
+            prompt = Prompts.blog_prompt(max_chars=int(max_len/nr_segs), content=context[inf:sup])
             # breakpoint()
             new_ctx = f'{new_ctx}{llm(prompt)} '
     else:
         new_ctx = context
 
+    return new_ctx
+
+def do_blob(mail_source, ctx_len:int, llm):
+    print(f"Creating blob from {len(mail_source.proc_mails)} processed mails...")
+    context = mail_source.make_blob()
+    # breakpoint()
+    
+    new_ctx = reduce_context(context, ctx_len, llm)
+
+    blog_dir = f'{DUMP_DIR}/methods/{mail_source.mailsId}/blogs'
+    if not (p:=Path(blog_dir)).is_dir():
+               p.mkdir(parents=True, exist_ok=True) 
+    with open(f'{blog_dir}/blob.txt', 'w') as f:
+        f.write(new_ctx)
+
     rag_system = RAG(retriever=None, context=new_ctx)
 
     return rag_system
 
-def do_grep(mail_source, llm):
-
+def do_grep(mail_source, ctx_len:int, llm):
+    mails_arr = mail_source.msgs_array()
+    print(f"Creating grep functionality for {len(mails_arr)} processed mails...")
+    grep_dir = f'{DUMP_DIR}/methods/{mail_source.mailsId}/grep'
+    if not (p:=Path(grep_dir)).is_dir():
+               p.mkdir(parents=True, exist_ok=True) 
+    
     def retriever(prompt):
         
-        entities_prompt = entities_prt(prompt=prompt)
-        entities = llm(entities_prompt)[0].split(',')
-        print(f"Extracted entities: {entities}")
-        context = []
-        for mail in mail_source.msgs_array():
+        grep_prompt = Prompts.grep_prompt(prompt=prompt)
+        entities = llm(grep_prompt)[0].split(',')
+        context_arr = []
+        for mail in mails_arr:
             for entity in entities:
                 # breakpoint()
                 if entity.lower().strip() in mail.get_content().lower():
-                    context.append(mail.get_content())
+                    context_arr.append(mail.get_content())
+        context = "\n".join(context_arr)
+        new_ctx = reduce_context(context, ctx_len, llm)
+
+        with open(f'{grep_dir}/grep.txt', 'a') as f:
+            f.write(f"{'='*80}\n")
+            f.write(f"Prompt: {prompt}\n\n")
+            f.write(f"Extracted entities: {entities}\n\n")
+            f.write("Retrieved context:\n")
+            f.write(new_ctx)
+    
         return context
     
     rag_system = RAG(retriever=retriever, context=None)
@@ -153,7 +188,7 @@ def do_rag(mail_out_dir, dense_emb, sparse_emb, force):
 
 
 
-def main(mailbox, doThreads, do_elmx, method, dense, sparse, gen, start, end):
+def main(mailbox:str, doThreads:bool, method:str, dense:str, sparse:str, gen:str, username:str, start:str, end:str):
     
     in_fmt = r'%d/%m/%Y'
     if start != None:
@@ -170,7 +205,7 @@ def main(mailbox, doThreads, do_elmx, method, dense, sparse, gen, start, end):
     # breakpoint()
 
     
-    mail_converter = EmlxConverter(mailbox=mailbox,doThreads=doThreads,start_date=start_date, end_date=end_date)
+    mail_converter = EmlxConverter(username=username, mailbox=mailbox, doThreads=doThreads, start_date=start_date, end_date=end_date)
     mail_converter.read_mails()
     mail_converter.save_msgs()
     
@@ -179,11 +214,16 @@ def main(mailbox, doThreads, do_elmx, method, dense, sparse, gen, start, end):
     if method == 'blob':
         rag_system = do_blob(mail_source=mail_converter, ctx_len=GEN_MODELS[f'{gen}']['ctx_len'], llm=llm)
     elif method == 'grep':
-        rag_system = do_grep(mail_source=mail_converter, llm=llm)
+        rag_system = do_grep(mail_source=mail_converter, ctx_len=GEN_MODELS[f'{gen}']['ctx_len'], llm=llm)
     elif method == 'es':
         rag_system = do_es(mail_source=mail_converter, llm=llm)
-    # elif method == 'rag':
-    #     rag_system = do_rag(mail_out_dir=tr_mail_out_dir, force=mail_processed, dense_emb=DENSE_EMB_MODELS[f'{dense}'], sparse_emb=SPARSE_EMB_FUNS[f'{sparse}'])
+    elif method == 'milvus':
+        # Prepare mail output directory for chunking
+        mail_out_dir = mail_converter.mail_out_dir
+        rag_system = do_rag(mail_out_dir=mail_out_dir, 
+                           dense_emb=DENSE_EMB_MODELS[f'{dense}'], 
+                           sparse_emb=SPARSE_EMB_FUNS.get(f'{sparse}') if sparse else None,
+                           force=False)
     else:
         raise Exception(f'Method {method} not known')
     
@@ -246,7 +286,8 @@ if __name__ == "__main__":
         dest='method',
         action='store',
         required=True,
-        help='specifies the method to be used',
+        choices=['blob', 'grep', 'es', 'milvus'],
+        help='specifies the retrieval method: blob (load all), grep (keyword search), es (Elasticsearch BM25), or milvus (semantic + sparse hybrid)',
     )
 
     parser.add_argument(
@@ -273,14 +314,15 @@ if __name__ == "__main__":
         default=False,
         help='specifies whether to group the emails in threads',
     )
-
+    
     parser.add_argument(
-        '-x', '--emlx',
-        dest='elmx',
-        action='store_true',
-        default=True,
-        help='specifies whether to process elmx files',
+        '-u', '--username',
+        dest='username',
+        action='store',
+        required=True,
+        help='specifies the username for the mail directory',
     )
+
 
     args, unknown = parser.parse_known_args()
 
@@ -289,8 +331,8 @@ if __name__ == "__main__":
         parser.print_help()
         exit(-1)
 
-    if args.method == 'rag' and args.dense is None:
-        parser.error("--method rag requires -d (--dense) <dense embedder>")
+    if args.method == 'milvus' and args.dense is None:
+        parser.error("--method milvus requires -d (--dense) <dense embedder>")
 
-    main(mailbox=args.mailbox, doThreads=args.doThreads, do_elmx=args.elmx, 
-         method=args.method, dense=args.dense, sparse=args.sparse, gen=args.gen, start=args.start, end=args.end)
+    main(mailbox=args.mailbox, doThreads=args.doThreads, method=args.method, dense=args.dense,
+          sparse=args.sparse, gen=args.gen, username=args.username, start=args.start, end=args.end)

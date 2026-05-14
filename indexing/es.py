@@ -136,25 +136,25 @@ class ElSearch:
                     "subject" : mail.Subject,
                     "content" : mail.Content,
                     "date": mail.Date,
-                    "conversationId" : mail.CoversationID
+                    "conversationId" : mail.ConversationID
                 }
             item = {
                 '_index': self.index,
-                '_id' : mail.CoversationID,
+                '_id' : mail.ConversationID,
                 '_source' : source
             }
             items.append(item)
 
             # result = self.client.index(
             #     index=self.index,
-            #     id=mail.CoversationID,
+            #     id=mail.ConversationID,
             #     document={
             #         "to": mail.To,
             #         "from": mail.From,
             #         "subject" : mail.Subject,
             #         "content" : mail.Content,
             #         "date": mail.Date,
-            #         "conversationId" : mail.CoversationID
+            #         "conversationId" : mail.ConversationID
             #     }
             # )
         result = bulk(self.client, items)
@@ -181,7 +181,7 @@ class ElSearch:
             else:
                 break
         if not ('hits' in result and 'hits' in result['hits']):
-            breakpoint()    
+            raise ValueError(f"Unexpected Elasticsearch response format: {result}")    
         
         for hit in result['hits']['hits']:
             # breakpoint()

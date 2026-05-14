@@ -1,16 +1,11 @@
 from pymilvus import WeightedRanker, RRFRanker
-from pymilvus.model.hybrid import BGEM3EmbeddingFunction
 
-
-# if there is a folder of eml mails already available.
-ORIG_MAILS_DIR = "./orig_mails"
-USERNAME = 'SB'
-
+DUMP_DIR = "./dumps"
 
 ######  CHUNKING
 MAX_CHUNK_LEN = 1000
 MAX_CHUNK_EXCESS = 2
-TOK2CHAR = 2.5
+TOK2CHAR = 2.2 # Approximate conversion from tokens to characters
 
 ######  MILVUS
 MILVUS_URI = './milvus.db'
@@ -29,10 +24,10 @@ DENSE_INDEX_PARAMS = {} # {"nlist": 128}
 DENSE_METRIC_TYPE = 'IP' # COSINE
 
 # https://milvus.io/api-reference/pymilvus/v2.4.x/EmbeddingModels/BGEM3EmbeddingFunction/BGEM3EmbeddingFunction.md
+# NOTE: BGEM3 import from pymilvus.model.hybrid is unavailable in 2.6.10
+# Instead, use None for sparse_embedding_function and rely on Milvus's built-in BM25 indexing
 
-SPARSE_EMB_FUNS = {
-    'BGEM3' : BGEM3EmbeddingFunction,
-}
+SPARSE_EMB_FUNS = None  # Use Milvus's auto_sparse() with built-in BM25 instead
     
 
 SPARSE_FIELD_NAME = 'sparse'
@@ -102,23 +97,42 @@ GEN_MODELS = {
                   'ctx_len': 2048,
                   'emb_len': 4096
               },
+    'smollm2' : {
+                  'name': 'ollama_chat/smollm2:135m',
+                  'parameters': 134.52 * 10**6,
+                  'ctx_len': 8192,
+                  'emb_len': 576
+              },
+    'gemma3' : {
+        'name': 'ollama_chat/gemma3:4b',
+        'parameters': 4.3 * 10**9,
+        'ctx_len': 131072,
+        'emb_len': 2560
+    },
+
 }
 
 ###### OLLAMA EMBEDDING MODELS
 # https://ollama.com/blog/embedding-models
 
 DENSE_EMB_MODELS = { 
-    'cerbero' : {
-                  'name': 'galatolo/cerbero-7b-openchat:latest', # https://github.com/galatolofederico/cerbero-7b
-                  'parameters': 7.2 * 10**9,
+    'nomic' : {
+                  'name': 'nomic-embed-text:latest',  # https://ollama.com/library/nomic-embed-text
+                  'parameters': 274 * 10**6,
                   'ctx_len': 8192,
-                  'emb_len': 4096
+                  'emb_len': 768
               },
     'mxbai' : {
                   'name': 'mxbai-embed-large:latest', # https://ollama.com/library/mxbai-embed-large
                   'parameters': 334.09 * 10**6,
                   'ctx_len': 512,
                   'emb_len': 1024
+              },
+    'multilingual-e5' : {
+                  'name': 'multilingual-e5-small:latest',  # https://ollama.com/library/multilingual-e5-small
+                  'parameters': 109 * 10**6,
+                  'ctx_len': 512,
+                  'emb_len': 384
               },
 }
 

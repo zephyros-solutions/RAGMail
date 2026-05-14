@@ -4,14 +4,38 @@ import ollama
 
 from pymilvus import MilvusClient, DataType, Function, FunctionType, WeightedRanker, RRFRanker, AnnSearchRequest
 
-from globals import MILVUS_URI, MILVUS_TOKEN
-from globals import TEXT_FIELD_NAME
-from globals import SPARSE_FIELD_NAME, SPARSE_INDEX_NAME, SPARSE_INDEX_TYPE, SPARSE_METRIC_TYPE, SPARSE_INDEX_PARAMS
-from globals import DENSE_FIELD_NAME, DENSE_INDEX_NAME, DENSE_INDEX_TYPE, DENSE_METRIC_TYPE, DENSE_INDEX_PARAMS
-from globals import DENSE_EMB_MODELS
+from config.globals import MILVUS_URI, MILVUS_TOKEN
+from config.globals import TEXT_FIELD_NAME
+from config.globals import SPARSE_FIELD_NAME, SPARSE_INDEX_NAME, SPARSE_INDEX_TYPE, SPARSE_METRIC_TYPE, SPARSE_INDEX_PARAMS
+from config.globals import DENSE_FIELD_NAME, DENSE_INDEX_NAME, DENSE_INDEX_TYPE, DENSE_METRIC_TYPE, DENSE_INDEX_PARAMS
+from config.globals import DENSE_EMB_MODELS
 
 from typing import List, Union, Optional
 
+# code from Gemini
+# from pymilvus import CollectionSchema, FieldSchema, DataType
+
+# # 1. Define the fields
+# fields = [
+#     FieldSchema(name="pk", dtype=DataType.INT64, is_primary=True, auto_id=True),
+#     # This is the "ColBERT" field: A list of vectors for one email
+#     FieldSchema(name="colbert_embeddings", dtype=DataType.FLOAT_VECTOR, 
+#                 dim=128, is_array=True, max_capacity=512), 
+#     FieldSchema(name="email_id", dtype=DataType.VARCHAR, max_length=100),
+#     FieldSchema(name="sender", dtype=DataType.VARCHAR, max_length=100)
+# ]
+
+# schema = CollectionSchema(fields, "Literary Email Analysis")
+
+# # 2. The Search (The MaxSim math is done by Milvus internally)
+# # You just send the 2D array of query tokens
+# search_params = {"metric_type": "IP", "params": {"nprobe": 10}}
+# results = collection.search(
+#     data=[query_embeddings], # This is a list of vectors [token1, token2...]
+#     anns_field="colbert_embeddings",
+#     param=search_params,
+#     limit=5
+# )
 
 def my_embedder(dense_emb_model) -> Function:
     # breakpoint()
@@ -147,46 +171,122 @@ class RMClient(dspy.Retrieve):
 
 
 
-    def upload_embeddings(self, chunks:list[str], metadata) -> None:
-        for idx,chunk in enumerate(tqdm(chunks, desc="Loading embeddings in DB")):
-            if len(chunk) == 0:
+    def upload_embeddings(self, chunks:list[str], metadata, batch_size: int = 32) -> None:
+        """Upload embeddings in batches for improved performance.
+        
+        Args:
+            chunks: List of text chunks to embed
+            metadata: Metadata dictionary to attach to all chunks
+            batch_size: Number of chunks to process per batch (default 32)
+        """
+        total_batches = (len(chunks) + batch_size - 1) // batch_size
+        
+        for batch_idx in tqdm(range(total_batches), desc="Loading embeddings in DB"):
+            start_idx = batch_idx * batch_size
+            end_idx = min(start_idx + batch_size, len(chunks))
+            batch_chunks = chunks[start_idx:end_idx]
+            
+            # Filter out empty chunks
+            batch_chunks = [c for c in batch_chunks if len(c) > 0]
+            if not batch_chunks:
                 continue
             
-            # breakpoint()
-            if self.sparse_embedding_function:
-                sparse_result = self.sparse_embedding_function().encode_documents([chunk])
-                if type(sparse_result) == dict:
-                    sparse_vec = sparse_result["sparse"][[0]]
-                else:
-                    sparse_vec = sparse_result[[0]]
+            # Embed entire batch at once (much faster than sequential)
+            dense_embeddings = self.dense_embedding_function(batch_chunks)
+            
+            # Prepare batch data for insertion
+            batch_data = []
+            for local_idx, chunk in enumerate(batch_chunks):
+                global_idx = start_idx + local_idx
                 
-                self.client.insert(
-                    collection_name=self.collection_name,
-                    data=[
-                        {
-                            "id": idx,
-                            DENSE_FIELD_NAME: self.dense_embedding_function([chunk])[0],
-                            SPARSE_FIELD_NAME: sparse_vec,
-                            TEXT_FIELD_NAME: chunk,
-                            **metadata,
-                        }
-                    ],
-                )
-            else:
-                self.client.insert(
-                    collection_name=self.collection_name,
-                    data=[
-                        {
-                            "id": idx,
-                            DENSE_FIELD_NAME: self.dense_embedding_function([chunk])[0],
-                            TEXT_FIELD_NAME: chunk,
-                            **metadata,
-                        }
-                    ],
-                )
+                record = {
+                    "id": global_idx,
+                    DENSE_FIELD_NAME: dense_embeddings[local_idx],
+                    TEXT_FIELD_NAME: chunk,
+                    **metadata,
+                }
+                
+                # Handle sparse embeddings if available
+                if self.sparse_embedding_function:
+                    sparse_result = self.sparse_embedding_function().encode_documents([chunk])
+                    if type(sparse_result) == dict:
+                        record[SPARSE_FIELD_NAME] = sparse_result["sparse"][[0]]
+                    else:
+                        record[SPARSE_FIELD_NAME] = sparse_result[[0]]
+                
+                batch_data.append(record)
+            
+            # Insert entire batch at once
+            self.client.insert(
+                collection_name=self.collection_name,
+                data=batch_data,
+            )
 
-
-            # breakpoint()
+    def upload_nodes(self, nodes: List, batch_size: int = 32) -> None:
+        """Upload LlamaIndex TextNode objects to Milvus.
+        
+        This is an optional alternative to upload_embeddings() that accepts
+        LlamaIndex TextNode objects with metadata directly.
+        
+        Args:
+            nodes: List of LlamaIndex TextNode objects
+            batch_size: Number of nodes to process per batch (default 32)
+        
+        Notes:
+            - Nodes can be created via mail_processing.mail_to_node.MailNodeConverter
+            - All node.metadata fields are automatically stored in Milvus
+            - Non-breaking: existing upload_embeddings() continues to work
+        """
+        
+        # Extract texts from nodes
+        texts = [node.get_content() for node in nodes]
+        
+        total_batches = (len(nodes) + batch_size - 1) // batch_size
+        
+        for batch_idx in tqdm(range(total_batches), desc="Loading LlamaIndex nodes in DB"):
+            start_idx = batch_idx * batch_size
+            end_idx = min(start_idx + batch_size, len(nodes))
+            batch_nodes = nodes[start_idx:end_idx]
+            batch_texts = texts[start_idx:end_idx]
+            
+            # Filter out empty nodes
+            valid_indices = [i for i, t in enumerate(batch_texts) if t and len(t.strip()) > 0]
+            if not valid_indices:
+                continue
+            
+            batch_nodes = [batch_nodes[i] for i in valid_indices]
+            batch_texts = [batch_texts[i] for i in valid_indices]
+            
+            # Embed entire batch at once
+            dense_embeddings = self.dense_embedding_function(batch_texts)
+            
+            # Prepare batch data for insertion
+            batch_data = []
+            for local_idx, (node, text) in enumerate(zip(batch_nodes, batch_texts)):
+                global_idx = start_idx + local_idx
+                
+                record = {
+                    "id": global_idx,
+                    DENSE_FIELD_NAME: dense_embeddings[local_idx],
+                    TEXT_FIELD_NAME: text,
+                    **(node.metadata if node.metadata else {}),
+                }
+                
+                # Handle sparse embeddings if available
+                if self.sparse_embedding_function:
+                    sparse_result = self.sparse_embedding_function().encode_documents([text])
+                    if type(sparse_result) == dict:
+                        record[SPARSE_FIELD_NAME] = sparse_result["sparse"][[0]]
+                    else:
+                        record[SPARSE_FIELD_NAME] = sparse_result[[0]]
+                
+                batch_data.append(record)
+            
+            # Insert entire batch at once
+            self.client.insert(
+                collection_name=self.collection_name,
+                data=batch_data,
+            )
 
     def forward(self, question:str, k:Optional[int]=None) -> dspy.Prediction:
         # breakpoint()
@@ -219,7 +319,6 @@ class RMClient(dspy.Retrieve):
             
             sparse_req = AnnSearchRequest(**sparse_search_params)
         
-        breakpoint()
         dense_search_params = {
             'data' : self.dense_embedding_function([question]),
             'anns_field' : DENSE_FIELD_NAME,

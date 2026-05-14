@@ -7,8 +7,8 @@ from email.utils import getaddresses
 
 from bs4 import BeautifulSoup
 
-from alias import alias
-from vocab import mail_preamble
+from mail_processing.alias import alias
+
 
 
 class Mail:
@@ -19,6 +19,12 @@ class Mail:
      OUT_TM_FMT = "%d_%m_%Y_%H:%M:%S_%z"
      MAX_MAILER_LEN = 40
 
+     @staticmethod
+     def mail_preamble(date, frm, to, subject, content, isReply):
+          if not isReply:
+               return f'Il {date} {frm} dice a {to} a proposito di {subject}:\n{content}'
+          else:
+               return f'Il {date} {frm} risponde a {to} a proposito di {subject}:\n{content}'
 
      @staticmethod
      def process_html(html_text):
@@ -317,7 +323,7 @@ class Mail:
           self.Date = None
           self.Subject = None
           self.Content = None
-          self.CoversationID = None
+          self.ConversationID = None
           self.isReply = False
 
 
@@ -325,7 +331,7 @@ class Mail:
           return self.get_content()
      
      def get_content(self):
-          cnt = mail_preamble( self.Date, self.From, self.To, self.Subject, self.Content, self.isReply)
+          cnt = self.mail_preamble( self.Date, self.From, self.To, self.Subject, self.Content, self.isReply)
           
           return cnt
 
@@ -383,7 +389,7 @@ class Mail:
           
 
      def setConversationID(self, id):
-          self.CoversationID = id
+          self.ConversationID = id
 
      def addReply(self, reply):
           reply.isReply = True
